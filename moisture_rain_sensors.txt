@@ -1,0 +1,3 @@
+https://www.gearbest.com/development-boards/pp_43080.html
+https://randomnerdtutorials.com/guide-for-soil-moisture-sensor-yl-69-or-hl-69-with-the-arduino/
+https://randomnerdtutorials.com/guide-for-rain-sensor-fc-37-or-yl-83-with-arduino/
