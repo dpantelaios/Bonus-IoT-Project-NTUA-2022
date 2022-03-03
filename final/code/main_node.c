@@ -12,8 +12,6 @@
 #define rx_buffer_size 128
 #define middle_boards 2
 
-sdfascsa
-
 char rx_buffer[rx_buffer_size];
 uint8_t rx_ReadPos = 0;
 uint8_t rx_WritePos = 0;
