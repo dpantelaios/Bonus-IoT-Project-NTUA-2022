@@ -14,6 +14,8 @@ char rx_buffer[rx_buffer_size];
 uint8_t rx_ReadPos = 0;
 uint8_t rx_WritePos = 0;
 
+dfsfsdafsdafa
+
 char tx_buffer[tx_buffer_size];
 char string_to_send[tx_buffer_size];
 char conv_buffer[4];
