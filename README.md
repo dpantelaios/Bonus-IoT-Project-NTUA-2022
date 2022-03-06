@@ -1,1 +1,0 @@
-# Bonus-IoT-Project-NTUA-2022
