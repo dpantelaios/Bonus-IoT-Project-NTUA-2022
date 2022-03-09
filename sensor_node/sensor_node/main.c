@@ -10,6 +10,10 @@
 #define tx_buffer_size 128
 #define rx_buffer_size 128
 
+#define FOSC 8000000 // Clock Speed gia thn seiriakh
+#define BAUD 9600
+#define MYUBRR FOSC/16/BAUD-1
+
 char rx_buffer[rx_buffer_size];
 uint8_t rx_ReadPos = 0;
 uint8_t rx_WritePos = 0;
@@ -87,30 +91,29 @@ void sendCommand(char command[]) {
 }
 */
 
-void USART_init(void)
-{
-	UCSRA = 0;
-	UCSRB = (1<<RXEN) | (1<<TXEN);
-	UBRRH = 0;
-	UBRRL = 51; //baudrate 9600
-	UCSRC = (1 << URSEL) | (3 << UCSZ0);
-}
-unsigned char USART_receive(void)
-{
-	while((UCSRA & 0x80) == 0 ){}
-	return UDR;
+void usart_init(unsigned int ubrr){
+	UCSRA=0;
+	UCSRB=(1<<RXEN)|(1<<TXEN);
+	UBRRH=(unsigned char)(ubrr>>8);
+	UBRRL=(unsigned char)ubrr;
+	UCSRC=(1 << URSEL) | (3 << UCSZ0);
+	return;
 }
 
-void USART_transmit(char input)
-{
-	while((UCSRA & 0x20) == 0){}
-	UDR = input;
+void usart_transmit(uint8_t data){
+	while(!(UCSRA&(1<<UDRE)));
+	UDR=data;
+}
+
+uint8_t usart_receive(){
+	while(!(UCSRA&(1<<RXC)));
+	return UDR;
 }
 
 void serialWrite(char c[]) {
 	for(uint8_t i=0; i<strlen(c); ++i) {
-		USART_transmit(c[i]); //transmit command one character at a time
-		print(c[i]); //debug
+		usart_transmit(c[i]); //transmit command one character at a time
+		//print(c[i]); //debug
 	}
 }
 
@@ -118,27 +121,31 @@ void sendCommand(char command[]) {
 	serialWrite(command);
 	unsigned char c;
 	
-	c=USART_receive();
-	PORTB=0xFF; //debug -- never reaches this part
-	print(c); //debug
+	c=usart_receive();
+	//PORTB=0xFF; //debug -- never reaches this part
+	//print(c); //debug
 	while(c!='S'){ //wait until "success" reply from esp
 		if(c=='F') { //if command execution failed re-transmit it
 			for(int i=0; i<5; ++i)
-				USART_receive(); //flush fail out of read buffer
+				usart_receive(); //flush fail out of read buffer
+			PORTB=0xFF;
 			serialWrite(command);
 		}
-		c=USART_receive();
+		c=usart_receive();
 	}
+	//PORTB=0xFF;
 	for(int i=0; i<8; ++i)
-		USART_receive(); //flush success out of read buffer
+    //print(c);
+		usart_receive(); //flush success out of read buffer
 }
 
 
 ISR(TIMER1_OVF_vect) {
-	PORTB=0xFF;
-	while((UCSRA & 0x80) == 1)
-		USART_receive(); //flush possible "Served Client" out of the system before sending new data
 	
+	while((UCSRA & 0x80) == 1)
+		usart_receive(); //flush possible "Served Client" out of the system before sending new data
+	
+	PORTB=0xFF;
     if(!first) {
         /*itoa(moist_sensor, conv_buffer, 10); //convert value read to string to send it to ESP
         strcpy(string_to_send, "ESP:sensorValue:\"Moist_Sensor\"["); //create the string to send to set the sensor value
@@ -214,7 +221,7 @@ int main(){
     //UCSRB = (1 << TXEN) | (1 << TXCIE) | (1 << RXEN) | (1 << RXCIE);
     //UCSRC = (1 << UCSZ1) | (1 << UCSZ0); //Char size(8 bits)
 	
-	USART_init();
+	
 
     TCCR1B = 0x05; //CK/1024
 	TCNT1 = 3036; //8s between interrupts
@@ -228,15 +235,23 @@ int main(){
     
     //strcpy(string_to_send, "ESP:restart\n");
     //sendCommand(string_to_send);
-    
-    strcpy(string_to_send, "ESP:ssid: \"Sens_Board1\"\n");
-    sendCommand(string_to_send);
+    usart_init(MYUBRR);
+	usart_transmit('\n');
+	
+    //strcpy(string_to_send, "ESP:ssid:\"Sens_Board1\"\n");
+    //sendCommand(string_to_send);
+	
+	//PORTB=0xFF;
 
     strcpy(string_to_send, "ESP:addSensor: \"Moist_Sensor\"\n");
     sendCommand(string_to_send);
+	
+	PORTB=0xFF;
 
-    strcpy(string_to_send, "ESP:addSensor:\"Tmp_Sensor\"\n");
+    strcpy(string_to_send, "ESP:addSensor: \"Tmp_Sensor\"\n");
     sendCommand(string_to_send);
+
+	PORTB=0xFF;
 
     strcpy(string_to_send, "ESP:APStart\n");
     sendCommand(string_to_send);
@@ -246,5 +261,5 @@ int main(){
     
 
     sei();
-    while(1){}
+    while(1){PORTB=0xFF;}
 }
