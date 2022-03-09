@@ -6,7 +6,7 @@
 
 #define f_osc 8000000
 #define baud   9600
-#define ubrr_content ((f_osc/(16*baud))-1)
+#define ubrr_content ((f_osc/(16UL*baud))-1)
 #define tx_buffer_size 128
 #define rx_buffer_size 128
 
@@ -24,10 +24,10 @@ bool first = true;
 
 int readDS1820();
 void lcd_init_sim();
-void clear_lcd();
+void lcd_clear();
 void print(char c);
 
-char getChar(void) {
+/*char getChar(void) {
     char ret = '\0';
     if(rx_ReadPos!=rx_WritePos) {
         ret = rx_buffer[rx_ReadPos++];
@@ -70,21 +70,75 @@ void serialWrite(char c[]) {
 
 void sendCommand(char command[]) {
     serialWrite(command);
+	
     char c;
     c=getChar();
     while(c!='S'){ //wait until "success" reply from esp
         if(c=='F') { //if command execution failed re-transmit it
-            for(int i=0; i<4; ++i)
+            for(int i=0; i<5; ++i)
                 getChar(); //flush fail out of read buffer
             serialWrite(command);
         }
         c=getChar();
     }
-    for(int i=0; i<7; ++i)
+	PORTB=0xFF;
+    for(int i=0; i<8; ++i)
         getChar(); //flush success out of read buffer
 }
+*/
+
+void USART_init(void)
+{
+	UCSRA = 0;
+	UCSRB = (1<<RXEN) | (1<<TXEN);
+	UBRRH = 0;
+	UBRRL = 51; //baudrate 9600
+	UCSRC = (1 << URSEL) | (3 << UCSZ0);
+}
+unsigned char USART_receive(void)
+{
+	while((UCSRA & 0x80) == 0 ){}
+	return UDR;
+}
+
+void USART_transmit(char input)
+{
+	while((UCSRA & 0x20) == 0){}
+	UDR = input;
+}
+
+void serialWrite(char c[]) {
+	for(uint8_t i=0; i<strlen(c); ++i) {
+		USART_transmit(c[i]); //transmit command one character at a time
+		print(c[i]); //debug
+	}
+}
+
+void sendCommand(char command[]) {
+	serialWrite(command);
+	unsigned char c;
+	
+	c=USART_receive();
+	PORTB=0xFF; //debug -- never reaches this part
+	print(c); //debug
+	while(c!='S'){ //wait until "success" reply from esp
+		if(c=='F') { //if command execution failed re-transmit it
+			for(int i=0; i<5; ++i)
+				USART_receive(); //flush fail out of read buffer
+			serialWrite(command);
+		}
+		c=USART_receive();
+	}
+	for(int i=0; i<8; ++i)
+		USART_receive(); //flush success out of read buffer
+}
+
 
 ISR(TIMER1_OVF_vect) {
+	PORTB=0xFF;
+	while((UCSRA & 0x80) == 1)
+		USART_receive(); //flush possible "Served Client" out of the system before sending new data
+	
     if(!first) {
         /*itoa(moist_sensor, conv_buffer, 10); //convert value read to string to send it to ESP
         strcpy(string_to_send, "ESP:sensorValue:\"Moist_Sensor\"["); //create the string to send to set the sensor value
@@ -121,6 +175,10 @@ ISR(ADC_vect) {
     }
     
     //for debugging
+	lcd_clear();
+	
+	PORTB=0xFF;
+	
     sprintf(conv_buffer, "%d", moist_sensor);
     for(int m=0; m<strlen(conv_buffer); ++m)
         print(conv_buffer[m]);
@@ -141,16 +199,22 @@ int main(){
     moist_sensor=tmp_sensor=0;
 
     DDRA = 0x00; // Port A input
-    UBRRH = (ubrr_content >> 8); //set USART Baud Rate Register
-    UBRRL = ubrr_content;
+	DDRB= 0xFF;
+	
+	DDRD=0xFF; //for debugging for lcd
+    
+	//UBRRH = (ubrr_content >> 8); //set USART Baud Rate Register
+    //UBRRL = ubrr_content;
     
     //UCSRB = (1 << TXEN) | (1 << TXCIE); //Transmitter Enable and TX_interrupt enable
     //UCSRC = (1 << UCSZ1) | (1 << UCSZ0); //Char size(8 bits)
 
     //Receiver and Transmitter Enable, RX_interrupt enable, TX_interrupt enable
 
-    UCSRB = (1 << TXEN) | (1 << TXCIE) | (1 << RXEN) | (1 << RXCIE);
-    UCSRC = (1 << UCSZ1) | (1 << UCSZ0); //Char size(8 bits)
+    //UCSRB = (1 << TXEN) | (1 << TXCIE) | (1 << RXEN) | (1 << RXCIE);
+    //UCSRC = (1 << UCSZ1) | (1 << UCSZ0); //Char size(8 bits)
+	
+	USART_init();
 
     TCCR1B = 0x05; //CK/1024
 	TCNT1 = 3036; //8s between interrupts
@@ -159,14 +223,16 @@ int main(){
     ADCSRA = (1<<ADEN)|(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0)|(1<<ADIE); //ADC enable, frequency = CLK/128 and enable interrupts
 
     lcd_init_sim();
+	
+	
     
-    strcpy(string_to_send, "ESP:restart\n");
-    sendCommand(string_to_send);
+    //strcpy(string_to_send, "ESP:restart\n");
+    //sendCommand(string_to_send);
     
-    strcpy(string_to_send, "ESP:ssid:\"Sens_Board1\"\n");
+    strcpy(string_to_send, "ESP:ssid: \"Sens_Board1\"\n");
     sendCommand(string_to_send);
 
-    strcpy(string_to_send, "ESP:addSensor:\"Moist_Sensor\"\n");
+    strcpy(string_to_send, "ESP:addSensor: \"Moist_Sensor\"\n");
     sendCommand(string_to_send);
 
     strcpy(string_to_send, "ESP:addSensor:\"Tmp_Sensor\"\n");
@@ -174,6 +240,8 @@ int main(){
 
     strcpy(string_to_send, "ESP:APStart\n");
     sendCommand(string_to_send);
+	
+	PORTB=0xFF;
 
     
 
