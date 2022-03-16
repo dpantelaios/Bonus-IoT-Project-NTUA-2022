@@ -20,6 +20,7 @@ uint8_t rx_WritePos = 0;
 
 char tx_buffer[tx_buffer_size];
 char string_to_send[tx_buffer_size];
+char string_to_print[tx_buffer_size];
 char conv_buffer[4];
 uint8_t tx_ReadPos = 0;
 uint8_t tx_WritePos = 0;
@@ -31,65 +32,13 @@ void lcd_init_sim();
 void lcd_clear();
 void print(char c);
 
-/*char getChar(void) {
-    char ret = '\0';
-    if(rx_ReadPos!=rx_WritePos) {
-        ret = rx_buffer[rx_ReadPos++];
-        if(rx_ReadPos >= rx_buffer_size)
-            rx_ReadPos=0;
-    }
-    return ret;
+void print_string(char str[]) {
+	for(uint8_t i=0; i<strlen(str); ++i) {
+		print(str[i]);
+	}
 }
 
-ISR(USART_RXC_vect){
-    rx_buffer[rx_WritePos++] = UDR;
-
-    if(rx_WritePos >= rx_buffer_size){
-        rx_WritePos = 0;
-    }
-}
-
-void appendSerial(char c) { //write character to buffer
-    tx_buffer[tx_WritePos++] = c;
-    if(tx_WritePos>=tx_buffer_size)
-        tx_WritePos = 0;
-}
-
-ISR(USART_TXC_vect){ //transmit single character
-    if(tx_ReadPos != tx_WritePos){
-        UDR = tx_buffer[tx_ReadPos++];
-    }
-    if(tx_ReadPos >= tx_buffer_size){
-        tx_ReadPos = 0;
-    }
-}
-
-void serialWrite(char c[]) {
-    for(uint8_t i=0; i<strlen(c); ++i) {
-        appendSerial(c[i]); //write all characters to the buffer
-    }
-    if(UCSRA & (1<<UDRE)) //if buffer has been emptied reset the transmission by sending a null character
-        UDR = 0;
-}
-
-void sendCommand(char command[]) {
-    serialWrite(command);
-	
-    char c;
-    c=getChar();
-    while(c!='S'){ //wait until "success" reply from esp
-        if(c=='F') { //if command execution failed re-transmit it
-            for(int i=0; i<5; ++i)
-                getChar(); //flush fail out of read buffer
-            serialWrite(command);
-        }
-        c=getChar();
-    }
-	PORTB=0xFF;
-    for(int i=0; i<8; ++i)
-        getChar(); //flush success out of read buffer
-}
-*/
+void wait_msec(int msecs);
 
 void usart_init(unsigned int ubrr){
 	UCSRA=0;
@@ -126,27 +75,49 @@ void sendCommand(char command[]) {
 	//print(c); //debug
 	while(c!='S'){ //wait until "success" reply from esp
 		if(c=='F') { //if command execution failed re-transmit it
-			for(int i=0; i<5; ++i)
-				usart_receive(); //flush fail out of read buffer
-			PORTB=0xFF;
+			while(UCSRA&(1<<RXC))
+			usart_receive(); //flush fail out of read buffer
+			//PORTB=0xFF;
+			PORTB=0x00;
 			serialWrite(command);
 		}
 		c=usart_receive();
 	}
 	//PORTB=0xFF;
-	for(int i=0; i<8; ++i)
-    //print(c);
-		usart_receive(); //flush success out of read buffer
+	while(UCSRA&(1<<RXC))
+	usart_receive(); //flush success out of read buffer
 }
 
+
+void printResponse() {
+	int i=0;
+	char c;
+	for (int i=0; i<19; ++i) {
+		c=usart_receive();
+		if(c=='\n')
+		c='U';
+		string_to_print[i]=c;
+	}
+	print_string(string_to_print);
+}
+
+void wait_ServedClient() {
+	char c;
+	c=usart_receive();
+	while(c!='S') {
+		c=usart_receive();
+	}
+	while(UCSRA&(1<<RXC))
+	usart_receive(); //flush ServedClient out of read buffer
+}
 
 ISR(TIMER1_OVF_vect) {
 	//PORTB=0x00;
 	
-	while((UCSRA & 0x80) == 1)
-		usart_receive(); //flush possible "Served Client" out of the system before sending new data
+	//while((UCSRA & 0x80) == 1)
+		//usart_receive(); //flush possible "Served Client" out of the system before sending new data
 	
-	//PORTB=0xFF;
+	PORTB=PORTB^0xFF;
     if(!first) {
         /*itoa(moist_sensor, conv_buffer, 10); //convert value read to string to send it to ESP
         strcpy(string_to_send, "ESP:sensorValue:\"Moist_Sensor\"["); //create the string to send to set the sensor value
@@ -154,7 +125,7 @@ ISR(TIMER1_OVF_vect) {
         strcat(string_to_send, "]\n");*/
         sprintf(string_to_send, "ESP:sensorValue:\"Moist_Sensor\"[%d]\n", moist_sensor);
 		
-
+		print_string(string_to_send);
         sendCommand(string_to_send); //send command to set the value of the moisture sensor
 
         /*itoa(tmp_sensor, conv_buffer, 10);
@@ -165,19 +136,21 @@ ISR(TIMER1_OVF_vect) {
         sprintf(string_to_send, "ESP:sensorValue:\"Tmp_Sensor\"[%.1f]\n", tmp_sensor/2.0);
         sendCommand(string_to_send); //send command to set the value of the temperature sensor
     }
-    else
+    else{
         first=false;
+	}
     ADMUX = 0x40; // Vref: Vcc(5V for easyAVR6) and analog input from PINA0 (moisture sensor)
     ADCSRA = ADCSRA | 0x40; // ADC Enable, ADC Interrupt Enable and f = CLK/128
 
-    TCNT1 = 3036;
+    //TCNT1 = 3036;
+	TCNT1 = 34286; //4s between interrupts
 }
 
 ISR(ADC_vect) {
-	PORTB=PORTB^0xFF;
+	//PORTB=PORTB^0xFF;
     moist_sensor = ADCW;
-    tmp_sensor = readDS1820();
-	//tmp_sensor=20;
+    //tmp_sensor = readDS1820();
+	tmp_sensor=20;
     if((tmp_sensor&0xFF00)==0xFF00){ //if temperature is negative convert it to the corresponding value
         tmp_sensor--;
         tmp_sensor = tmp_sensor&0x00FF;
@@ -212,23 +185,12 @@ int main(){
     DDRA = 0x00; // Port A input
 	DDRB= 0xFF;
 	
-	DDRD=0xFF; //for debugging for lcd
-    
-	//UBRRH = (ubrr_content >> 8); //set USART Baud Rate Register
-    //UBRRL = ubrr_content;
-    
-    //UCSRB = (1 << TXEN) | (1 << TXCIE); //Transmitter Enable and TX_interrupt enable
-    //UCSRC = (1 << UCSZ1) | (1 << UCSZ0); //Char size(8 bits)
-
-    //Receiver and Transmitter Enable, RX_interrupt enable, TX_interrupt enable
-
-    //UCSRB = (1 << TXEN) | (1 << TXCIE) | (1 << RXEN) | (1 << RXCIE);
-    //UCSRC = (1 << UCSZ1) | (1 << UCSZ0); //Char size(8 bits)
+	DDRD=0xFF; //for debugging for lcd	
+	PORTB = 0xFF;
 	
-	
-
     TCCR1B = 0x05; //CK/1024
-	TCNT1 = 3036; //8s between interrupts
+	//TCNT1 = 3036; //8s between interrupts
+	TCNT1 = 34286; //4s between interrupts
 	TIMSK = 0x04; //enable overflow interrupt for TCNT1
 
     ADCSRA = (1<<ADEN)|(1<<ADPS2)|(1<<ADPS1)|(1<<ADPS0)|(1<<ADIE); //ADC enable, frequency = CLK/128 and enable interrupts
@@ -243,25 +205,29 @@ int main(){
 	
 	usart_receive(); //wait until restart is complete
 	while(UCSRA&(1<<RXC))
-		usart_receive();
+	usart_receive();
 	
+	wait_msec(2000);
 	
+	PORTB=0xFF;
     strcpy(string_to_send, "ESP:ssid:\"Sens_Board1\"\n");
-    sendCommand(string_to_send);
-
+    serialWrite(string_to_send);
+	//printResponse();
+	
     strcpy(string_to_send, "ESP:addSensor: \"Moist_Sensor\"\n");
     sendCommand(string_to_send);
 	
 
     strcpy(string_to_send, "ESP:addSensor: \"Tmp_Sensor\"\n");
     sendCommand(string_to_send);
-
+	
+	
     strcpy(string_to_send, "ESP:APStart\n");
-    sendCommand(string_to_send);
-
-    
-
+    serialWrite(string_to_send);
+	//printResponse();
+	PORTB=0x00;
+	
     sei();
-	PORTB=0xFF;
+	PORTB=0x00;
     while(1){}
 }

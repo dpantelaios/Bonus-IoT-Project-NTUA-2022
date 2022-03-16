@@ -72,6 +72,7 @@ ret
 lcd_clear:
 ldi r24,0x01 ; καθαρισμός της οθόνης
 rcall lcd_command_sim
+ret
 
 lcd_command_sim:
 push r24 ; αποθήκευσε τους καταχωρητές r25:r24 γιατί τους
@@ -129,6 +130,7 @@ pop r25 ;επανάφερε τους καταχωρητές r25:r24
 pop r24
 ret
 
+.global wait_msec
 wait_msec:
 push r24 ; 2 κύκλοι (0.250 μsec)
 push r25 ; 2 κύκλοι
@@ -154,3 +156,4 @@ ret ; 4 κύκλοι (0.500 μsec)
 .global print
 print:
 rcall lcd_data_sim
+ret
