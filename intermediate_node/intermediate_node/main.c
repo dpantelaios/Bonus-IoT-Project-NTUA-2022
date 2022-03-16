@@ -126,6 +126,7 @@ ISR(TIMER1_OVF_vect) {
 	
 	cli();
 	//PORTB=PORTB^0xFF;
+	//PORTB=0x00;
 	
 	if(!first) {
 		for(int k=1; k<=sensor_boards; ++k){
@@ -287,13 +288,14 @@ ISR(TIMER1_OVF_vect) {
 		sprintf(string_to_send, "ESP:sensorValue:\"Tmp_var%d\"[%d]\n", board_no, tmp_var);
 		sendCommand(string_to_send); //send command to set the value of the sensor
 		
+		//PORTB=0xFF;
 		clear_buffer();
 		
 		strcpy(string_to_send, "ESP:connect\n");
-		sendCommand(string_to_send);
+		//sendCommand(string_to_send);
 		
 		strcpy(string_to_send, "ESP:clientTransmit\n");
-		sendCommand(string_to_send);
+		//sendCommand(string_to_send);
 		//PORTB=0x00;
 		
 	}
