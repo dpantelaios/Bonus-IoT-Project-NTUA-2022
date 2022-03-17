@@ -20,7 +20,6 @@ char rx_buffer[rx_buffer_size];
 uint8_t rx_ReadPos = 0;
 uint8_t rx_WritePos = 0;
 
-char tx_buffer[tx_buffer_size];
 char string_to_send[tx_buffer_size];
 char string_to_print[128];
 char conv_buffer[6]; //variance is at max 1024^2/4=262144 which has 6 digits
@@ -75,7 +74,6 @@ void clear_buffer(){
 void serialWrite(char c[]) {
 	for(uint8_t i=0; i<strlen(c); ++i) {
 		usart_transmit(c[i]); //transmit command one character at a time
-		//print(c[i]); //debug
 	}
 }
 
@@ -84,47 +82,17 @@ void sendCommand(char command[]) {
 	unsigned char c;
 	
 	c=usart_receive();
-	//PORTB=0xFF; //debug -- never reaches this part
-	//print(c); //debug
 	while(c!='S'){ //wait until "success" reply from esp
 		if(c=='F') { //if command execution failed re-transmit it
 			while(UCSRA&(1<<RXC))
 			usart_receive(); //flush fail out of read buffer
-			//PORTB=0xFF;
-			//PORTB=0x00;
 			serialWrite(command);
 		}
 		c=usart_receive();
 	}
-	//PORTB=0xFF;
 	while(UCSRA&(1<<RXC))
 	usart_receive(); //flush success out of read buffer
 }
-
-
-//old sendCommand
-/*void sendCommand(char command[]) {
-	serialWrite(command);
-	unsigned char c;
-	
-	c=usart_receive();
-	//PORTB=0xFF; //debug -- never reaches this part
-	//print(c); //debug
-	while(c!='S'){ //wait until "success" reply from esp
-		if(c=='F') { //if command execution failed re-transmit it
-			for(int i=0; i<5; ++i)
-			usart_receive(); //flush fail out of read buffer
-			PORTB=0xFF;
-			serialWrite(command);
-		}
-		c=usart_receive();
-	}
-	//PORTB=0xFF;
-	for(int i=0; i<8; ++i)
-	//print(c);
-	usart_receive(); //flush success out of read buffer
-}
-*/
 
 void wait_ServedClient() {
 	char c;
@@ -132,8 +100,20 @@ void wait_ServedClient() {
 	while(c!='S') {
 		c=usart_receive();
 	}
-	for(int i=0; i<12; ++i)
+	for(int i=0; i<5; ++i)
 	usart_receive(); //flush ServedClient out of read buffer
+}
+
+void printResponse() {
+	int i=0;
+	char c;
+	for (int i=0; i<13; ++i) {
+		c=usart_receive();
+		if(c=='\n')
+		c='U';
+		string_to_print[i]=c;
+	}
+	print_string(string_to_print);
 }
 
 ISR(TIMER1_OVF_vect) {
@@ -141,38 +121,15 @@ ISR(TIMER1_OVF_vect) {
     char c;
     bool failed;
     int counter =0, watering_pot = 0, leds;
-
+	
+	PORTB = PORTB^0xFF;
     if(!first) {
         for(int k=1; k<=middle_boards; ++k){
             failed=false;
 			counter =0;
-            /*strcpy(string_to_send, "ESP:ssid:\"Middle_Board");
-            itoa(k, conv_buffer, 10);
-            strcat(string_to_send, conv_buffer);
-            strcat(string_to_send, "\"\n");
-            sendCommand(string_to_send);*/
-			/*
-            sprintf(string_to_send, "ESP:ssid:\"Middle_Board%d\"\n", k);
-            strcpy(string_to_send, "ESP:password:\"awesomePassword\"\n");
-            sendCommand(string_to_send);
-            strcpy(string_to_send, "ESP:sensorValue:\"Moist_avg\"[request]\n");
-            sendCommand(string_to_send);
-            strcpy(string_to_send, "ESP:sensorValue:\"Tmp_avg\"[request]\n");
-            sendCommand(string_to_send);
-            strcpy(string_to_send, "ESP:sensorValue:\"Moist_var\"[request]\n");
-            sendCommand(string_to_send);
-            strcpy(string_to_send, "ESP:sensorValue:\"Tmp_var\"[request]\n");
-            sendCommand(string_to_send);
-            strcpy(string_to_send, "ESP:connect\n"); //will wait until it can connect
-            sendCommand(string_to_send);
-            strcpy(string_to_send, "ESP:clientTransmit\n");
-            sendCommand(string_to_send);*/
-			
-			
-            //strcpy(string_to_send, "ESP:getAllValues\n");
-            //serialWrite(string_to_send);
 			
 			//get moisture average
+			PORTB = 0x00;
 			clear_buffer(); //flush potential ServedClient
 			sprintf(string_to_send, "ESP:getValue:\"Moist_avg%d\"\n", k);
 			serialWrite(string_to_send);
@@ -198,8 +155,6 @@ ISR(TIMER1_OVF_vect) {
 	            moist_avgs[k-1]=atoi(conv_buffer);
             }
 			
-			
-			
 			//get temperature average
 			clear_buffer(); //flush potential ServedClient
 			sprintf(string_to_send, "ESP:getValue:\"Tmp_avg%d\"\n", k);
@@ -222,8 +177,6 @@ ISR(TIMER1_OVF_vect) {
 				for(int i=0; i<(6-counter); i++){
 					conv_buffer[i] = '0';
 				}
-				//print_string(conv_buffer);
-				//print_string("\n");
 				tmp_avgs[k-1]=atof(conv_buffer);
 			}
 		
@@ -277,7 +230,6 @@ ISR(TIMER1_OVF_vect) {
 				for(int i=0; i<(6-counter); i++){
 					conv_buffer[i] = '0';
 				}
-				//print_string(conv_buffer);
 				tmp_vars[k-1]=atoi(conv_buffer);
 			}
         }
@@ -286,39 +238,39 @@ ISR(TIMER1_OVF_vect) {
             leds = 1;
             watering_pot=0;
             for(int k=1; k<=middle_boards; ++k){//fix temperature!!!!!!
-                sprintf(string_to_print, "T %d: %.1f ", k, tmp_avgs[k]);
+                sprintf(string_to_print, "T%d: %.1f ", k, tmp_avgs[k-1]);
                 print_string(string_to_print);
 
-                if(moist_avgs[k]>=640){
+                if(moist_avgs[k-1]>=640){
                     strcpy(string_to_print, "VDRY");
-                    dry[k]=1;
+                    dry[k-1]=1;
                 }
-                else if(moist_avgs[k]>=410){
-                    dry[k]=1;
+                else if(moist_avgs[k-1]>=410){
+                    dry[k-1]=1;
                     strcpy(string_to_print, "DRY");
                 }
-                else if(moist_avgs[k]>=200) {
-                    dry[k]=0;
+                else if(moist_avgs[k-1]>=200) {
+                    dry[k-1]=0;
                     strcpy(string_to_print, "HUM");
                 }
                 else{
-                    dry[k]=0;
+                    dry[k-1]=0;
                     strcpy(string_to_print, "VHUM");
                 }
 
                 print_string(string_to_print);
 				print('\n'); //change line wont work on actual LCD
 				
-				if(tmp_vars[k]>=15) {
+				if(tmp_vars[k-1]>=15) {
 					strcpy(string_to_print, "TMP VAR! ");
 					print_string(string_to_print);
 				}
-				if(moist_vars[k]>=80) {
+				if(moist_vars[k-1]>=80) {
 					strcpy(string_to_print, "MST VAR!");
 					print_string(string_to_print);
 				}
                 
-                if(dry[k])
+                if(dry[k-1])
                     watering_pot = watering_pot | leds;
                 leds = leds << 1;
             }
@@ -327,7 +279,6 @@ ISR(TIMER1_OVF_vect) {
     }
     else
         first=false;
-    //lcd_clear();
 	sei();
     TCNT1 = 3036;
 }
@@ -335,16 +286,12 @@ ISR(TIMER1_OVF_vect) {
 
 int main() {
 	first = true;
-	/*
-    UBRRH = (ubrr_content >> 8); //set USART Baud Rate Register
-    UBRRL = ubrr_content;
-
-    //Receiver and Transmitter Enable, RX_interrupt enable, TX_interrupt enable
-
-    UCSRB = (1 << TXEN) | (1 << TXCIE) | (1 << RXEN) | (1 << RXCIE);
-    UCSRC = (1 << UCSZ1) | (1 << UCSZ0); //Char size(8 bits)*/
+	DDRB = 0xFF;
+	DDRD = 0xFF;
 	
+	lcd_init_sim();
 	usart_init(MYUBRR);
+	lcd_clear();
 	
     for(int i=0; i<middle_boards; ++i) { //initialize_values
         moist_avgs[i]=0;
@@ -362,11 +309,20 @@ int main() {
     while(UCSRA&(1<<RXC)) //flush read buffer
 		usart_receive();
     
-    wait_msec(2000);
+    wait_msec(4000);
+	
+	while(UCSRA&(1<<RXC)) //flush read buffer
+	usart_receive();
 	
 	strcpy(string_to_send, "ESP:ssid:\"Main_Board\"\n");
 	sendCommand(string_to_send);
+	
+	strcpy(string_to_send, "ESP:addSensor: \"Moist_Sensor\"\n");
+	sendCommand(string_to_send);
 
+	strcpy(string_to_send, "ESP:addSensor: \"Tmp_Sensor\"\n");
+	sendCommand(string_to_send);
+	
 	for(int i=1; i<=middle_boards; ++i) {
 
 		sprintf(string_to_send, "ESP:addSensor: \"Moist_avg%d\"\n", i);
@@ -397,11 +353,13 @@ int main() {
 	
 	strcpy(string_to_send, "ESP:APStart\n");
 	sendCommand(string_to_send);
-
+	
+	PORTB = 0xFF;
     TCCR1B = 0x05; //CK/1024
 	TCNT1 = 3036; //8 seconds
 	TIMSK = 0x04; //enable overflow interrupt for TCNT1
     sei();
-
-    while(1){}
+	
+    while(1){    
+    }
 }
