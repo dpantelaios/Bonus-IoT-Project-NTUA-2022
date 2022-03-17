@@ -62,7 +62,6 @@ uint8_t usart_receive(){
 void serialWrite(char c[]) {
 	for(uint8_t i=0; i<strlen(c); ++i) {
 		usart_transmit(c[i]); //transmit command one character at a time
-		//print(c[i]); //debug
 	}
 }
 
@@ -71,13 +70,10 @@ void sendCommand(char command[]) {
 	unsigned char c;
 	
 	c=usart_receive();
-	//PORTB=0xFF; //debug -- never reaches this part
-	//print(c); //debug
 	while(c!='S'){ //wait until "success" reply from esp
 		if(c=='F') { //if command execution failed re-transmit it
 			while(UCSRA&(1<<RXC))
 			usart_receive(); //flush fail out of read buffer
-			//PORTB=0xFF;
 			PORTB=0x00;
 			serialWrite(command);
 		}
@@ -112,26 +108,16 @@ void wait_ServedClient() {
 }
 
 ISR(TIMER1_OVF_vect) {
-	//PORTB=0x00;
 	
-	//while((UCSRA & 0x80) == 1)
-		//usart_receive(); //flush possible "Served Client" out of the system before sending new data
+	while((UCSRA & 0x80) == 1)
+		usart_receive(); //flush possible "Served Client" out of the system before sending new data
 	
 	PORTB=PORTB^0xFF;
     if(!first) {
-        /*itoa(moist_sensor, conv_buffer, 10); //convert value read to string to send it to ESP
-        strcpy(string_to_send, "ESP:sensorValue:\"Moist_Sensor\"["); //create the string to send to set the sensor value
-        strcat(string_to_send, conv_buffer);
-        strcat(string_to_send, "]\n");*/
         sprintf(string_to_send, "ESP:sensorValue:\"Moist_Sensor\"[%d]\n", moist_sensor);
 		
 		print_string(string_to_send);
         sendCommand(string_to_send); //send command to set the value of the moisture sensor
-
-        /*itoa(tmp_sensor, conv_buffer, 10);
-        strcpy(string_to_send, "ESP:sensorValue:\"Tmp_Sensor\"[");
-        strcat(string_to_send, conv_buffer);
-        strcat(string_to_send, "]\n");*/
 
         sprintf(string_to_send, "ESP:sensorValue:\"Tmp_Sensor\"[%.1f]\n", tmp_sensor/2.0);
         sendCommand(string_to_send); //send command to set the value of the temperature sensor
@@ -149,8 +135,8 @@ ISR(TIMER1_OVF_vect) {
 ISR(ADC_vect) {
 	//PORTB=PORTB^0xFF;
     moist_sensor = ADCW;
-    //tmp_sensor = readDS1820();
-	tmp_sensor=20;
+    tmp_sensor = readDS1820();
+	//tmp_sensor=20;
     if((tmp_sensor&0xFF00)==0xFF00){ //if temperature is negative convert it to the corresponding value
         tmp_sensor--;
         tmp_sensor = tmp_sensor&0x00FF;
@@ -160,20 +146,6 @@ ISR(ADC_vect) {
     
     //for debugging
 	lcd_clear();
-	
-	//PORTB=0x00;
-	/*
-    sprintf(conv_buffer, "%d", moist_sensor);
-    for(int m=0; m<strlen(conv_buffer); ++m)
-        print(conv_buffer[m]);
-
-    print('\n');
-
-    sprintf(conv_buffer, "%.1f", tmp_sensor/2.0);
-    for(int m=0; m<strlen(conv_buffer); ++m)
-        print(conv_buffer[m]);
-    //debugging end
-	*/
 }
 
 
@@ -221,6 +193,17 @@ int main(){
     strcpy(string_to_send, "ESP:addSensor: \"Tmp_Sensor\"\n");
     sendCommand(string_to_send);
 	
+	sprintf(string_to_send, "ESP:addSensor: \"Moist_avg%d\"\n", 1);
+	sendCommand(string_to_send);
+
+	sprintf(string_to_send, "ESP:addSensor: \"Tmp_avg%d\"\n", 1);
+	sendCommand(string_to_send);
+
+	sprintf(string_to_send, "ESP:addSensor: \"Moist_var%d\"\n", 1);
+	sendCommand(string_to_send);
+
+	sprintf(string_to_send, "ESP:addSensor: \"Tmp_var%d\"\n", 1);
+	sendCommand(string_to_send);
 	
     strcpy(string_to_send, "ESP:APStart\n");
     serialWrite(string_to_send);
