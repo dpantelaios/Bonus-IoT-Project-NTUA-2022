@@ -1,9 +1,9 @@
 # IoT Project - Microprocessors Laboratory 2021-22
 
 **Contributors** 
-Alexandros Moiras
-Vasiliki Efthymiou
-Dimitris Pantelaios
+- Alexandros Moiras
+- Dimitris Pantelaios
+- 
 ## Description
 
 This project, developed during the Microprocessors Laboratory course in 2021, is an IoT-based system designed for collecting and processing environmental data. The key features include:
